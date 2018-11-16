@@ -44,7 +44,7 @@ module Globalize
         @translation_class ||= begin
           klass = self.const_get(:Translation) rescue nil
           klass = translation_options[:class_name]
-          if klass.nil? || klass.class_name != (self.class_name + "Translation")
+          if klass.nil? || klass.to_s != (self.class_name + "::Translation")
             klass = self.const_set(:Translation, Class.new(Globalize::ActiveRecord::Translation))
           end
 
