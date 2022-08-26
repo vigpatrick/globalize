@@ -41,7 +41,7 @@ module Globalize
         end
 
         begin
-          if ::ActiveRecord::VERSION::STRING > "5.0" && table_exists? && translation_class.table_exists?
+          if Globalize.rails_5? && database_connection_possible?
             self.ignored_columns += translated_attribute_names.map(&:to_s)
             reset_column_information
           end
@@ -52,7 +52,8 @@ module Globalize
 
       def check_columns!(attr_names)
         # If tables do not exist or Rails version is greater than 5, do not warn about conflicting columns
-        return unless ::ActiveRecord::VERSION::STRING < "5.0" && table_exists? && translation_class.table_exists?
+        return unless Globalize.rails_42? && database_connection_possible?
+
         if (overlap = attr_names.map(&:to_s) & column_names).present?
           ActiveSupport::Deprecation.warn(
             ["You have defined one or more translated attributes with names that conflict with column(s) on the model table. ",
@@ -68,6 +69,7 @@ module Globalize
       def apply_globalize_options(options)
         options[:table_name] ||= "#{table_name.singularize}_translations"
         options[:foreign_key] ||= class_name.foreign_key
+        options[:autosave] ||= false
 
         class_attribute :translated_attribute_names, :translation_options, :fallbacks_for_empty_translations
         self.translated_attribute_names = []
@@ -99,7 +101,7 @@ module Globalize
                                 :foreign_key => options[:foreign_key],
                                 :dependent   => :destroy,
                                 :extend      => HasManyExtensions,
-                                :autosave    => false,
+                                :autosave    => options[:autosave],
                                 :inverse_of  => :globalized_model
 
         after_create :save_translations!

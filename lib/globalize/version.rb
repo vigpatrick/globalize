@@ -1,3 +1,5 @@
+# frozen_string_literal: true
+
 module Globalize
-  Version = '5.2.0'
+  Version = '6.2.1'
 end

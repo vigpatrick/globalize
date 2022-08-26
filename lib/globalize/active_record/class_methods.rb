@@ -3,7 +3,7 @@ module Globalize
     module ClassMethods
       delegate :translated_locales, :set_translations_table_name, :to => :translation_class
 
-      if ::ActiveRecord::VERSION::STRING < "5.0.0"
+      if Globalize.rails_42?
         def columns_hash
           super.except(*translated_attribute_names.map(&:to_s))
         end
@@ -98,7 +98,6 @@ module Globalize
       end
 
       def define_translated_attr_accessor(name)
-        attribute(name, ::ActiveRecord::Type::Value.new)
         define_translated_attr_reader(name)
         define_translated_attr_writer(name)
       end
@@ -121,8 +120,23 @@ module Globalize
       end
 
       def define_translations_accessor(name)
+        attribute(name, ::ActiveRecord::Type::Value.new) if Globalize.rails_5?
         define_translations_reader(name)
         define_translations_writer(name)
+      end
+
+      def database_connection_possible?
+        begin
+          # Without a connection tentative, the `connected?` function can responds with a false negative
+          ::ActiveRecord::Base.connection
+        rescue
+          # Ignore connection fail because in docker build hasn't a database connection
+          nil
+        end
+
+        ::ActiveRecord::Base.connected? &&
+          table_exists? &&
+          translation_class.table_exists?
       end
     end
   end

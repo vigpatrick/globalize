@@ -5,16 +5,16 @@ class AttributesTest < MiniTest::Spec
 
   describe 'translated attribute reader' do
     it 'is defined for translated attributes' do
-      if ::ActiveRecord::VERSION::STRING < "5.0"
-        assert_equal Post.new.respond_to?(:title), false
-      else
-        assert_equal Post.new.respond_to?(:title), true
-      end
+      assert Post.new.respond_to?(:title)
+    end
+
+    it 'Post#columns does not include translated attributes' do
+      assert (Post.column_names.map(&:to_sym) & Post.translated_attribute_names.map(&:to_sym)).empty?
     end
 
     it 'returns the correct translation for a saved record after locale switching' do
       post = Post.create(:title => 'title', published: false)
-      post.update_attributes(:title => 'Titel', :locale => :de, published: true)
+      post.update(:title => 'Titel', :locale => :de, published: true)
       post.reload
 
       assert_translated post, :en, :title, 'title'
@@ -140,6 +140,12 @@ class AttributesTest < MiniTest::Spec
       saved_locales = post.translations.map(&:locale)
       assert saved_locales.include? :it
     end
+
+    it 'translates the reference' do
+      media = Media.create!
+      post = Post.create!(title: 'title', media: media)
+      assert_equal media.id, post.media_id
+    end
   end
 
   describe '#attribute_names' do
@@ -227,7 +233,7 @@ class AttributesTest < MiniTest::Spec
   describe '#<attr>_before_type_cast' do
     it 'works for translated attributes' do
       post = Post.create(:title => 'title')
-      post.update_attributes(:title => "Titel", :locale => :de)
+      post.update(:title => "Titel", :locale => :de)
 
       with_locale(:en) { assert_equal 'title', post.title_before_type_cast }
       with_locale(:de) { assert_equal 'Titel', post.title_before_type_cast }

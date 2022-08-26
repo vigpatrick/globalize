@@ -21,7 +21,7 @@ module Globalize
 
         # In Rails 5.2 we need to override *_assign_attributes* as it's called earlier
         # in the stack (before *assign_attributes*)
-        # See https://github.com/rails/rails/blob/master/activerecord/lib/active_record/attribute_assignment.rb#L11
+        # See https://github.com/rails/rails/blob/5-2-stable/activerecord/lib/active_record/attribute_assignment.rb#L12
         def _assign_attributes(new_attributes)
           attributes = new_attributes.stringify_keys
           with_given_locale(attributes) { super(attributes.except("locale")) }
@@ -66,7 +66,7 @@ module Globalize
       end
 
       def _read_attribute(attr_name, options = {}, &block)
-        translated_value = read_translated_attribute(attr_name, options, &block)
+        translated_value = read_translated_attribute(attr_name, options)
         translated_value.nil? ? super(attr_name, &block) : translated_value
       end
 
@@ -158,17 +158,34 @@ module Globalize
         Globalize.fallbacks(locale)
       end
 
-      def save(*)
-        result = Globalize.with_locale(translation.locale || I18n.default_locale) do
-          without_fallbacks do
-            super
-          end
-        end
-        if result
-          globalize.clear_dirty
-        end
+      if Globalize.ruby_27?
+        class_eval <<~RUBY, __FILE__, __LINE__ + 1
+          def save(...)
+            result = Globalize.with_locale(translation.locale || I18n.default_locale) do
+              without_fallbacks do
+                super
+              end
+            end
+            if result
+              globalize.clear_dirty
+            end
 
-        result
+            result
+          end
+        RUBY
+      else
+        def save(*)
+          result = Globalize.with_locale(translation.locale || I18n.default_locale) do
+            without_fallbacks do
+              super
+            end
+          end
+          if result
+            globalize.clear_dirty
+          end
+
+          result
+        end
       end
 
       def column_for_attribute name
@@ -183,6 +200,32 @@ module Globalize
 
       def changed?
         changed_attributes.present? || translations.any?(&:changed?)
+      end
+
+      if Globalize.rails_51?
+        def saved_changes
+          super.tap do |changes|
+            translation = translation_for(::Globalize.locale, false)
+            if translation
+              translation_changes = translation.saved_changes.select { |name| translated?(name) }
+              changes.merge!(translation_changes) if translation_changes.any?
+            end
+          end
+        end
+      end
+
+      if Globalize.rails_6?
+        def changed_attributes
+          super.merge(globalize.changed_attributes(::Globalize.locale))
+        end
+
+        def changes
+          super.merge(globalize.changes(::Globalize.locale))
+        end
+
+        def changed
+          super.concat(globalize.changed).uniq
+        end
       end
 
       # need to access instance variable directly since changed_attributes
@@ -236,10 +279,7 @@ module Globalize
         return nil unless options[:translated]
         return nil unless translated?(name)
 
-        value = globalize.fetch(options[:locale] || Globalize.locale, name)
-        return nil if value.nil?
-
-        block_given? ? yield(value) : value
+        globalize.fetch(options[:locale] || Globalize.locale, name)
       end
     end
   end

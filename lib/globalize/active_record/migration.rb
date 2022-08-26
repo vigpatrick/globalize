@@ -62,6 +62,7 @@ module Globalize
         end
 
         def drop_translation_table!(options = {})
+          add_missing_columns if options[:create_source_columns]
           move_data_to_model_table if options[:migrate_data]
           drop_translations_index
           drop_translation_table
@@ -78,19 +79,37 @@ module Globalize
 
         def create_translation_table
           connection.create_table(translations_table_name) do |t|
-            t.references table_name.sub(/^#{table_name_prefix}/, '').singularize, :null => false, :index => false, :type => column_type(model.primary_key).to_sym
+            t.references table_name.sub(/^#{table_name_prefix}/, '').singularize,
+                         :null => false,
+                         :index => false,
+                         :type => column_type(model.primary_key).try(:to_sym),
+                         :limit => model.columns.detect { |c| c.name == model.primary_key }.try(:limit)
             t.string :locale, :null => false
             t.timestamps :null => false
           end
         end
 
-        def add_translation_fields
-          connection.change_table(translations_table_name) do |t|
-            fields.each do |name, options|
-              if options.is_a? Hash
-                t.column name, options.delete(:type), options
-              else
-                t.column name, options
+        if Globalize.rails_6?
+          def add_translation_fields
+            connection.change_table(translations_table_name) do |t|
+              fields.each do |name, options|
+                if options.is_a? Hash
+                  t.column name, options.delete(:type), **options
+                else
+                  t.column name, options
+                end
+              end
+            end
+          end
+        else
+          def add_translation_fields
+            connection.change_table(translations_table_name) do |t|
+              fields.each do |name, options|
+                if options.is_a? Hash
+                  t.column name, options.delete(:type), options
+                else
+                  t.column name, options
+                end
               end
             end
           end
@@ -144,14 +163,14 @@ module Globalize
         end
 
         def move_data_to_model_table
-          add_missing_columns
-
           # Find all of the translated attributes for all records in the model.
           all_translated_attributes = model.all.collect{|m| m.attributes}
           all_translated_attributes.each do |translated_record|
             # Create a hash containing the translated column names and their values.
             translated_attribute_names.inject(fields_to_update={}) do |f, name|
               f.update({name.to_sym => translated_record[name.to_s]})
+              # Remove attributes that will no longer be translated
+              translated_attribute_names.delete(name)
             end
 
             # Now, update the actual model's record with the hash.

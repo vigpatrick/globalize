@@ -36,6 +36,7 @@ ActiveRecord::Schema.define do
     t.text       :content
     t.boolean    :published
     t.datetime   :published_at
+    t.references :media
   end
 
   create_table :products, :force => true do |t|
@@ -76,6 +77,13 @@ ActiveRecord::Schema.define do
   end
 
   create_table :migrateds, :force => true do |t|
+    t.string :name
+    t.string :untranslated
+  end
+
+  create_table :migrated_bigints, :force => true, :id => false do |t|
+    # supposed to create a bigint value for id
+    t.integer :id, :limit => 8, :primary_key => true
     t.string :name
     t.string :untranslated
   end
